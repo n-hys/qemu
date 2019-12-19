@@ -40,10 +40,8 @@ static uint64_t cpu_riscv_read_rtc(void)
  */
 static void sifive_clint_write_timecmp(RISCVCPU *cpu, uint64_t value)
 {
-    uint64_t next;
-    uint64_t diff;
-
-    uint64_t rtc_r = cpu_riscv_read_rtc();
+    int64_t now = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+    uint64_t rtc_r = muldiv64(now, SIFIVE_CLINT_TIMEBASE_FREQ, NANOSECONDS_PER_SECOND);
 
     cpu->env.timecmp = value;
     if (cpu->env.timecmp <= rtc_r) {
@@ -55,11 +53,10 @@ static void sifive_clint_write_timecmp(RISCVCPU *cpu, uint64_t value)
 
     /* otherwise, set up the future timer interrupt */
     riscv_cpu_update_mip(cpu, MIP_MTIP, BOOL_TO_MASK(0));
-    diff = cpu->env.timecmp - rtc_r;
-    /* back to ns (note args switched in muldiv64) */
-    next = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-        muldiv64(diff, NANOSECONDS_PER_SECOND, SIFIVE_CLINT_TIMEBASE_FREQ);
-    timer_mod(cpu->env.timer, next);
+    int64_t next = muldiv64(value, NANOSECONDS_PER_SECOND, SIFIVE_CLINT_TIMEBASE_FREQ);
+    if (next > now) {
+        timer_mod(cpu->env.timer, next);
+    }
 }
 
 /*
